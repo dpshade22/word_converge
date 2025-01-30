@@ -1,90 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { aoService } from '../services/ao';
+import React, { useState } from 'react';
+import { useWallet } from '../contexts/WalletContext';
 
-const WalletConnect = ({ onConnect, onDisconnect, isConnected, walletAddress }) => {
+const WalletConnect = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const checkConnection = async () => {
-      try {
-        if (!window.arweaveWallet) {
-          console.log('ArConnect not found');
-          return;
-        }
-
-        const activeAddress = await window.arweaveWallet.getActiveAddress();
-        if (activeAddress) {
-          await handleConnection(activeAddress);
-        }
-      } catch (error) {
-        console.error('Error checking wallet connection:', error);
-      }
-    };
-
-    checkConnection();
-  }, [onConnect]);
-
-  const handleConnection = async (address) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      // Check game info when connecting
-      const info = await aoService.getInfo();
-      console.log('Game Info:', info);
-
-      if (!info) {
-        throw new Error('Failed to connect to game process');
-      }
-
-      // Verify we got a valid response
-      if (info.name !== 'Synonyms Game' || info.version !== '1.0.0') {
-        throw new Error('Invalid game version or name');
-      }
-
-      onConnect(address);
-      setIsModalOpen(false);
-    } catch (error) {
-      console.error('Error connecting to game:', error);
-      setError(error.message || 'Failed to connect to game. Please try again.');
-      onDisconnect(); // Disconnect wallet if game connection fails
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const connectWallet = async () => {
-    try {
-      if (!window.arweaveWallet) {
-        setError('ArConnect not found. Please install it first.');
-        return;
-      }
-
-      await window.arweaveWallet.connect([
-        'ACCESS_ADDRESS',
-        'SIGN_TRANSACTION',
-        'DISPATCH'
-      ]);
-
-      const address = await window.arweaveWallet.getActiveAddress();
-      await handleConnection(address);
-    } catch (error) {
-      console.error('Error connecting wallet:', error);
-      setError('Failed to connect wallet. Please try again.');
-    }
-  };
-
-  const disconnectWallet = async () => {
-    try {
-      if (window.arweaveWallet) {
-        await window.arweaveWallet.disconnect();
-      }
-      onDisconnect();
-    } catch (error) {
-      console.error('Error disconnecting wallet:', error);
-    }
-  };
+  const {
+    walletAddress,
+    isConnected,
+    isLoading,
+    error,
+    connectWallet,
+    disconnectWallet
+  } = useWallet();
 
   return (
     <>
@@ -102,56 +28,46 @@ const WalletConnect = ({ onConnect, onDisconnect, isConnected, walletAddress }) 
         ) : isConnected ? (
           <span className="flex items-center gap-2">
             <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-            {`${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`}
+            {walletAddress?.slice(0, 4)}...{walletAddress?.slice(-4)}
           </span>
         ) : (
-          'Connect Wallet'
+          <span className="flex items-center gap-2">
+            <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+            Connect Wallet
+          </span>
         )}
       </button>
 
       {/* Connection Modal */}
       {isModalOpen && !isConnected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="w-full max-w-md p-6 bg-white border-4 border-black">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold">Connect Wallet</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-8 rounded-lg max-w-md w-full mx-4">
+            <h2 className="text-2xl font-bold mb-4">Connect Wallet</h2>
+            
+            {error && (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                {error}
+              </div>
+            )}
+            
+            <p className="mb-4">
+              Connect your ArConnect wallet to start playing Synonyms.
+            </p>
+            
+            <div className="flex justify-end gap-4">
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="text-2xl font-bold hover:text-gray-700"
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
               >
-                ×
+                Cancel
               </button>
-            </div>
-
-            <div className="space-y-4">
-              {error && (
-                <div className="p-4 text-red-600 border-4 border-red-600 bg-red-50">
-                  {error}
-                </div>
-              )}
-
               <button
                 onClick={connectWallet}
+                className="px-4 py-2 bg-black text-white hover:bg-gray-800"
                 disabled={isLoading}
-                className={`w-full p-4 text-center font-bold transition-colors ${isLoading
-                  ? 'bg-gray-300 cursor-not-allowed'
-                  : 'bg-black text-white hover:bg-gray-800'
-                  }`}
               >
-                {isLoading ? 'Connecting...' : 'ArConnect'}
+                {isLoading ? 'Connecting...' : 'Connect ArConnect'}
               </button>
-
-              <p className="text-sm text-center text-gray-600">
-                Don't have ArConnect?{' '}
-                <a
-                  href="https://arconnect.io"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-black underline hover:text-gray-800"
-                >
-                  Get it here
-                </a>
-              </p>
             </div>
           </div>
         </div>

@@ -9,7 +9,6 @@ if (!PROCESS_ID) {
 console.log("Using Process ID:", PROCESS_ID);
 
 const parseResult = (result) => {
-  console.log("Parsing result:", result);
 
   if (!result) {
     throw new Error("No response from game process");
@@ -24,19 +23,16 @@ const parseResult = (result) => {
   try {
     if (result.Messages?.[0]?.Data) {
       const data = JSON.parse(result.Messages[0].Data);
-      console.log("Parsed Messages Data:", data);
       return data;
     }
 
     if (result.Output) {
       const data = JSON.parse(result.Output);
-      console.log("Parsed Output:", data);
       return data;
     }
 
     if (result.Data) {
       const data = JSON.parse(result.Data);
-      console.log("Parsed Data:", data);
       return data;
     }
 
@@ -83,13 +79,12 @@ export const aoService = {
 
   async getLobbyState(lobbyId) {
     try {
-      console.log("Requesting get-lobby-state for ID:", lobbyId);
       const result = await dryrun({
         process: PROCESS_ID,
         tags: [{ name: "Action", value: "LobbyState" }],
         data: lobbyId.toString()
       });
-      console.log("Get lobby state result:", result);
+
       return parseResult(result);
     } catch (error) {
       console.error('Error getting lobby state:', error);

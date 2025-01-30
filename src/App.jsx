@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import WalletConnect from './components/WalletConnect';
 import LobbyPanel from './components/LobbyPanel';
 import { aoService } from './services/ao';
+import { useWallet } from './contexts/WalletContext';
 
 function App() {
+  const { walletAddress, isConnected } = useWallet();
   const [selectedLobbyId, setSelectedLobbyId] = useState(null);
   const [gameState, setGameState] = useState('IDLE'); // IDLE, COUNTDOWN, ACTIVE, SCORING
   const [gameStart, setGameStart] = useState(null);
@@ -13,39 +15,30 @@ function App() {
   const [currentWord, setCurrentWord] = useState('');
   const [wordHistory, setWordHistory] = useState([]);
   const [showLobbyPanel, setShowLobbyPanel] = useState(true);
-  const [walletAddress, setWalletAddress] = useState(null);
 
-  // Handle wallet connection
-  const handleWalletConnect = (address) => {
-    setWalletAddress(address);
-  };
-
-  const handleWalletDisconnect = () => {
-    setWalletAddress(null);
-    setSelectedLobbyId(null);
-    setGameState('IDLE');
-  };
+  // Reset game state when wallet disconnects
+  useEffect(() => {
+    if (!isConnected) {
+      setSelectedLobbyId(null);
+      setGameState('IDLE');
+      setShowLobbyPanel(true);
+    }
+  }, [isConnected]);
 
   // Handle game start countdown
   useEffect(() => {
     if (gameState !== 'COUNTDOWN' || !gameStart) return;
 
-    console.log("Starting countdown with gameStart:", gameStart);
     const intervalId = setInterval(() => {
-      // gameStart is already in seconds from the backend
-      const nowSeconds = Math.floor(Date.now() / 1000);
-      const remaining = gameStart - nowSeconds;
+      const nowMilliseconds = Date.now();
+      const remainingMilliseconds = gameStart - nowMilliseconds;
 
-      console.log("Countdown - Current time:", nowSeconds);
-      console.log("Countdown - Time remaining:", remaining);
-
-      if (remaining <= 0) {
-        console.log("Countdown complete - Starting game");
+      if (remainingMilliseconds <= 0) {
         clearInterval(intervalId);
         setGameState('ACTIVE');
         setTimeLeft(20); // 20 seconds for first round
       } else {
-        setTimeLeft(remaining);
+        setTimeLeft(Math.ceil(remainingMilliseconds / 1000)); // Convert to seconds for display
       }
     }, 1000);
 
@@ -56,33 +49,37 @@ function App() {
   useEffect(() => {
     if (gameState !== 'ACTIVE' || !timeLeft) return;
 
-    console.log("Starting round timer with timeLeft:", timeLeft);
     const intervalId = setInterval(() => {
       setTimeLeft(time => {
-        const newTime = time - 1;
-        console.log("Round timer - Time remaining:", newTime);
-        
-        if (newTime <= 0) {
-          console.log("Round timer complete");
+        if (time <= 1) {
           clearInterval(intervalId);
           setGameState('SCORING');
           return 0;
         }
-        return newTime;
+        return time - 1;
       });
     }, 1000);
 
     return () => clearInterval(intervalId);
   }, [gameState, timeLeft]);
 
-  const handleGameStart = (startTimeSeconds) => {
-    console.log("Game starting with timestamp:", startTimeSeconds);
-    setGameStart(startTimeSeconds); // Store the time in seconds
-    setGameState('COUNTDOWN');
-    const nowSeconds = Math.floor(Date.now() / 1000);
-    const initialTimeLeft = startTimeSeconds - nowSeconds;
-    console.log("Initial time left for countdown:", initialTimeLeft);
-    setTimeLeft(initialTimeLeft);
+  const handleGameStart = (startTimeMilliseconds) => {
+    const nowMilliseconds = Date.now();
+    const remainingMilliseconds = startTimeMilliseconds - nowMilliseconds;
+    
+    // Update game start time first
+    setGameStart(startTimeMilliseconds);
+
+    // Determine initial game state and time
+    if (remainingMilliseconds <= 0) {
+      setGameState('ACTIVE');
+      setTimeLeft(20); // 20 seconds for first round
+    } else {
+      setGameState('COUNTDOWN');
+      setTimeLeft(Math.ceil(remainingMilliseconds / 1000));
+    }
+
+    // Reset game state variables
     setRound(1);
     setScore(0);
     setWordHistory([]);
@@ -104,14 +101,12 @@ function App() {
     }
   };
 
-  if (!walletAddress) {
+  if (!isConnected) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center p-8">
           <h1 className="text-4xl md:text-6xl font-bold mb-8">SYNONYMS</h1>
           <WalletConnect
-            onConnect={handleWalletConnect}
-            onDisconnect={handleWalletDisconnect}
             isConnected={false}
             walletAddress={null}
           />
@@ -127,9 +122,7 @@ function App() {
           <div className="flex justify-between items-center">
             <h1 className="text-2xl md:text-4xl font-bold">SYNONYMS</h1>
             <WalletConnect
-              onConnect={handleWalletConnect}
-              onDisconnect={handleWalletDisconnect}
-              isConnected={!!walletAddress}
+              isConnected={isConnected}
               walletAddress={walletAddress}
             />
           </div>
@@ -152,9 +145,7 @@ function App() {
         <div className="flex justify-between items-center">
           <h1 className="text-2xl md:text-4xl font-bold">SYNONYMS</h1>
           <WalletConnect
-            onConnect={handleWalletConnect}
-            onDisconnect={handleWalletDisconnect}
-            isConnected={!!walletAddress}
+            isConnected={isConnected}
             walletAddress={walletAddress}
           />
         </div>

@@ -163,7 +163,8 @@ Handlers.add("join-lobby",
       print("Lobby " .. lobbyId .. " reached capacity")
       print("Current player count: " .. #lobby.players .. "/" .. lobby.maxPlayers)
       lobby.status = "ready"
-      lobby.gameStart = os.time() + 10
+      lobby.gameStart = msg.Timestamp
+      lobby.gameStarted = false  -- Initialize game started flag
       lobby.gameState = initializeGameState(lobby)
 
       -- Debug player list
@@ -287,7 +288,7 @@ Handlers.add("submit-word",
     table.insert(lobby.submissions, {
       player = msg.From,
       word = word,
-      timestamp = os.time()
+      timestamp = msg.Timestamp
     })
 
     msg.reply({

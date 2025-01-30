@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { aoService } from '../services/ao';
 
 const POLLING_INTERVAL = 5000; // 5 seconds
-const GAME_STATE_POLLING_INTERVAL = 1000; // 1 second
+const GAME_STATE_POLLING_INTERVAL = 2000; // 2 seconds
 
 const StatusOverlay = ({ message }) => (
   <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex items-center justify-center z-50">
@@ -43,47 +43,66 @@ const LobbyPanel = ({ onSelectLobby, onGameStart, onClose, selectedLobbyId, clas
   useEffect(() => {
     if (!selectedLobbyId) return;
 
+    let mounted = true;
+    let intervalId = null;
+
     const pollGameState = async () => {
+      if (!mounted || !selectedLobbyId) return;
+
       try {
-        console.log("Polling lobby:", selectedLobbyId);
         const response = await aoService.getLobbyState(selectedLobbyId);
-        console.log("Lobby state response:", response);
+
+        if (!mounted) return;
 
         if (response.status === 'success') {
           const lobby = response.lobby;
-          console.log("Lobby status:", lobby.status);
-          console.log("Game start timestamp (raw):", lobby.gameStart);
           
-          // If game is ready to start
-          if (lobby.status === 'ready' && lobby.gameStart) {
-            // gameStart from backend is in seconds
-            const gameStartSeconds = lobby.gameStart;
-            const nowSeconds = Math.floor(Date.now() / 1000);
-            
-            console.log("Current time (seconds):", nowSeconds);
-            console.log("Time until game start (seconds):", gameStartSeconds - nowSeconds);
-            
-            if (nowSeconds >= gameStartSeconds) {
-              console.log("Game starting now!");
-              onGameStart(gameStartSeconds);
+          if (lobby.gameStarted) {
+            if (intervalId) {
+              clearInterval(intervalId);
+              intervalId = null;
+            }
+            return;
+          }
+          
+          if (lobby.status === 'ready' && lobby.gameStart && !lobby.gameStarted) {
+            const gameStartMilliseconds = parseInt(lobby.gameStart);
+            const nowMilliseconds = Date.now();
+            const remainingMilliseconds = gameStartMilliseconds - nowMilliseconds;
+
+            if (remainingMilliseconds <= 1000 && remainingMilliseconds > -5000) {
+              if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+              }
+              
+              // Set gameStarted flag to prevent duplicate starts
+              lobby.gameStarted = true;
+              
+              // Trigger game start on next frame to avoid state conflicts
+              if (mounted) {
+                onGameStart(gameStartMilliseconds);
+              }
             }
           }
         }
       } catch (error) {
         console.error('Error polling game state:', error);
-        console.error('Error details:', error.message);
       }
     };
 
-    console.log("Setting up game state polling for lobby:", selectedLobbyId);
-    const intervalId = setInterval(pollGameState, GAME_STATE_POLLING_INTERVAL);
-    
     // Initial poll
     pollGameState();
+    
+    // Set up polling with a slightly longer interval
+    intervalId = setInterval(pollGameState, 2000);
 
     return () => {
-      console.log("Cleaning up game state polling for lobby:", selectedLobbyId);
-      clearInterval(intervalId);
+      mounted = false;
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
     };
   }, [selectedLobbyId, onGameStart]);
 
