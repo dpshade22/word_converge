@@ -1,4 +1,4 @@
-# Brutalist Synonym Game
+# Word Converge
 
 A manual implementation of a word matching game with a brutalist design aesthetic.
 
