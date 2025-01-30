@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { aoService } from '../services/ao';
 
 const POLLING_INTERVAL = 5000; // 5 seconds
+const GAME_STATE_POLLING_INTERVAL = 1000; // 1 second
 
 const StatusOverlay = ({ message }) => (
   <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex items-center justify-center z-50">
@@ -14,11 +15,11 @@ const StatusOverlay = ({ message }) => (
   </div>
 );
 
-const LobbyPanel = ({ onSelectLobby, onClose, selectedLobbyId, className }) => {
+const LobbyPanel = ({ onSelectLobby, onGameStart, onClose, selectedLobbyId, className }) => {
   const [lobbies, setLobbies] = useState([]);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [status, setStatus] = useState(null); // For overlay message
+  const [status, setStatus] = useState(null);
 
   // Fetch lobbies without affecting UI state if data hasn't changed
   const fetchLobbies = useCallback(async () => {
@@ -38,7 +39,55 @@ const LobbyPanel = ({ onSelectLobby, onClose, selectedLobbyId, className }) => {
     }
   }, []);
 
-  // Set up polling
+  // Poll for game state when in a lobby
+  useEffect(() => {
+    if (!selectedLobbyId) return;
+
+    const pollGameState = async () => {
+      try {
+        console.log("Polling lobby:", selectedLobbyId);
+        const response = await aoService.getLobbyState(selectedLobbyId);
+        console.log("Lobby state response:", response);
+
+        if (response.status === 'success') {
+          const lobby = response.lobby;
+          console.log("Lobby status:", lobby.status);
+          console.log("Game start timestamp (raw):", lobby.gameStart);
+          
+          // If game is ready to start
+          if (lobby.status === 'ready' && lobby.gameStart) {
+            // gameStart from backend is in seconds
+            const gameStartSeconds = lobby.gameStart;
+            const nowSeconds = Math.floor(Date.now() / 1000);
+            
+            console.log("Current time (seconds):", nowSeconds);
+            console.log("Time until game start (seconds):", gameStartSeconds - nowSeconds);
+            
+            if (nowSeconds >= gameStartSeconds) {
+              console.log("Game starting now!");
+              onGameStart(gameStartSeconds);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error polling game state:', error);
+        console.error('Error details:', error.message);
+      }
+    };
+
+    console.log("Setting up game state polling for lobby:", selectedLobbyId);
+    const intervalId = setInterval(pollGameState, GAME_STATE_POLLING_INTERVAL);
+    
+    // Initial poll
+    pollGameState();
+
+    return () => {
+      console.log("Cleaning up game state polling for lobby:", selectedLobbyId);
+      clearInterval(intervalId);
+    };
+  }, [selectedLobbyId, onGameStart]);
+
+  // Set up lobby polling
   useEffect(() => {
     fetchLobbies();
     const intervalId = setInterval(fetchLobbies, POLLING_INTERVAL);
