@@ -1,4 +1,4 @@
-import { createDataItemSigner, message, dryrun } from "@permaweb/aoconnect";
+import { createDataItemSigner, message, dryrun, result } from "@permaweb/aoconnect";
 
 const PROCESS_ID = import.meta.env.VITE_PROCESS_ID;
 if (!PROCESS_ID) {
@@ -8,38 +8,39 @@ if (!PROCESS_ID) {
 
 console.log("Using Process ID:", PROCESS_ID);
 
-const parseResult = (result) => {
-
-  if (!result) {
-    throw new Error("No response from game process");
-  }
-
-  // Handle message response (transaction ID)
-  if (typeof result === 'string') {
-    return { status: 'success', transactionId: result };
-  }
-
-  // Handle dryrun/message response
+const safeJsonParse = (str) => {
   try {
-    if (result.Messages?.[0]?.Data) {
-      const data = JSON.parse(result.Messages[0].Data);
-      return data;
-    }
-
-    if (result.Output) {
-      const data = JSON.parse(result.Output);
-      return data;
-    }
-
-    if (result.Data) {
-      const data = JSON.parse(result.Data);
-      return data;
-    }
-
-    throw new Error("No valid data in response");
+    return JSON.parse(str);
   } catch (error) {
-    console.error('Error parsing result:', error);
-    throw new Error(`Failed to parse response: ${error.message}`);
+    console.error('Error parsing JSON:', error);
+    return null;
+  }
+};
+
+const handleMessage = async (action, tags = [], logPrefix = '') => {
+  try {
+    console.log(`${logPrefix} request:`, tags);
+    const msgResult = await message({
+      process: PROCESS_ID,
+      tags: [{ name: "Action", value: action }, ...tags],
+      data: "",
+      signer: createDataItemSigner(window.arweaveWallet)
+    });
+    console.log(`${logPrefix} result:`, msgResult);
+    
+    const processResult = await result({
+      message: msgResult,
+      process: PROCESS_ID
+    });
+    
+    if (!processResult) {
+      throw new Error("No response from process");
+    }
+
+    return safeJsonParse(processResult.Messages[0].Data);
+  } catch (error) {
+    console.error(`Error in ${action}:`, error);
+    return { status: 'error', error: error.message };
   }
 };
 
@@ -47,30 +48,26 @@ export const aoService = {
   // Read-only operations using dryrun
   async getInfo() {
     try {
-      console.log("Sending Info request to process:", PROCESS_ID);
       const result = await dryrun({
         process: PROCESS_ID,
         tags: [{ name: "Action", value: "Info" }],
         data: ""
       });
-      console.log("Info result:", result);
-      return parseResult(result);
+      return safeJsonParse(result.Messages[0].Data);
     } catch (error) {
-      console.error("Error getting info:", error);
+      console.error('Error getting info:', error);
       return { status: 'error', error: error.message };
     }
   },
 
   async listLobbies() {
     try {
-      console.log("Requesting list-lobbies");
       const result = await dryrun({
         process: PROCESS_ID,
         tags: [{ name: "Action", value: "ListLobbies" }],
         data: ""
       });
-      console.log("List lobbies result:", result);
-      return parseResult(result);
+      return safeJsonParse(result.Messages[0].Data);
     } catch (error) {
       console.error('Error listing lobbies:', error);
       return { status: 'error', error: error.message };
@@ -81,83 +78,47 @@ export const aoService = {
     try {
       const result = await dryrun({
         process: PROCESS_ID,
-        tags: [{ name: "Action", value: "LobbyState" }],
-        data: lobbyId.toString()
+        tags: [
+          { name: "Action", value: "GetLobbyState" },
+          { name: "LobbyID", value: lobbyId.toString() }
+        ],
+        data: ""
       });
-
-      return parseResult(result);
+      return safeJsonParse(result.Messages[0].Data);
     } catch (error) {
       console.error('Error getting lobby state:', error);
       return { status: 'error', error: error.message };
     }
   },
 
-  // Write operations using message
   async createLobby() {
-    try {
-      console.log("Requesting create-lobby");
-      const result = await message({
-        process: PROCESS_ID,
-        tags: [{ name: "Action", value: "CreateLobby" }],
-        data: "",
-        signer: createDataItemSigner(window.arweaveWallet)
-      });
-      console.log("Create lobby result:", result);
-      return parseResult(result);
-    } catch (error) {
-      console.error('Error creating lobby:', error);
-      return { status: 'error', error: error.message };
+    const response = await handleMessage('CreateLobby', [], 'Create lobby');
+    if (response.status === 'success') {
+      return { 
+        status: 'success', 
+        lobbyId: response.lobbyId,
+        joined: true 
+      };
     }
+    return response;
   },
 
   async joinLobby(lobbyId) {
-    try {
-      console.log("Requesting join-lobby for ID:", lobbyId);
-      const result = await message({
-        process: PROCESS_ID,
-        tags: [{ name: "Action", value: "JoinLobby" }],
-        data: lobbyId.toString(),
-        signer: createDataItemSigner(window.arweaveWallet)
-      });
-      console.log("Join lobby result:", result);
-      return parseResult(result);
-    } catch (error) {
-      console.error('Error joining lobby:', error);
-      return { status: 'error', error: error.message };
-    }
+    return handleMessage('JoinLobby', [
+      { name: "LobbyID", value: lobbyId.toString() }
+    ], 'Join lobby');
   },
 
   async leaveLobby(lobbyId) {
-    try {
-      console.log("Requesting leave-lobby for ID:", lobbyId);
-      const result = await message({
-        process: PROCESS_ID,
-        tags: [{ name: "Action", value: "LeaveLobby" }],
-        data: lobbyId.toString(),
-        signer: createDataItemSigner(window.arweaveWallet)
-      });
-      console.log("Leave lobby result:", result);
-      return parseResult(result);
-    } catch (error) {
-      console.error('Error leaving lobby:', error);
-      return { status: 'error', error: error.message };
-    }
+    return handleMessage('LeaveLobby', [
+      { name: "LobbyID", value: lobbyId.toString() }
+    ], 'Leave lobby');
   },
 
   async submitWord(lobbyId, word) {
-    try {
-      console.log("Requesting submit-word for lobby:", lobbyId, "word:", word);
-      const result = await message({
-        process: PROCESS_ID,
-        tags: [{ name: "Action", value: "SubmitWord" }],
-        data: JSON.stringify({ lobbyId, word }),
-        signer: createDataItemSigner(window.arweaveWallet)
-      });
-      console.log("Submit word result:", result);
-      return parseResult(result);
-    } catch (error) {
-      console.error('Error submitting word:', error);
-      return { status: 'error', error: error.message };
-    }
+    return handleMessage('SubmitWord', [
+      { name: "LobbyID", value: lobbyId.toString() },
+      { name: "Word", value: word }
+    ], 'Submit word');
   }
 };

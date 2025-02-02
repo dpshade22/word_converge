@@ -1,44 +1,88 @@
 import React, { useState, useEffect } from 'react';
+import { ao } from '../services/ao';
 
-const GameView = ({ gameStartTimestamp }) => {
-  const [remainingTime, setRemainingTime] = useState(0);
+const GameView = ({ lobbyId, playerId }) => {
+  const [gameStatus, setGameStatus] = useState('waiting');
+  const [isReady, setIsReady] = useState(false);
+  const [players, setPlayers] = useState([]);
 
   useEffect(() => {
-    if (!gameStartTimestamp) return;
+    if (!lobbyId) return;
 
-    const updateTimer = () => {
-      const now = Date.now();
-      const timeRemaining = gameStartTimestamp - now;
-      setRemainingTime(Math.max(0, timeRemaining));
+    const checkGameStatus = async () => {
+      const response = await ao.sendAction("GetStatus", { 
+        Tags: { LobbyID: lobbyId }
+      });
+      const { Status } = JSON.parse(response.Data);
+      setGameStatus(Status);
+
+      const lobbyResponse = await ao.sendAction("GetLobbyState", {
+        Tags: { LobbyID: lobbyId }
+      });
+      const lobby = JSON.parse(lobbyResponse.Data);
+      setPlayers(Object.entries(lobby.players));
     };
 
-    // Initial update
-    updateTimer();
-
-    const intervalId = setInterval(updateTimer, 1000);
+    const intervalId = setInterval(checkGameStatus, 2000);
+    checkGameStatus(); // Initial check
 
     return () => clearInterval(intervalId);
-  }, [gameStartTimestamp]);
+  }, [lobbyId]);
 
-  const formatTime = (milliseconds) => {
-    if (milliseconds <= 0) return "Game Starting...";
-    const seconds = Math.ceil(milliseconds / 1000);
-    return `Starting in ${seconds}s`;
+  const handleReadyClick = async () => {
+    await ao.sendAction("PlayerReady", {
+      Tags: {
+        LobbyID: lobbyId,
+        PlayerID: playerId
+      }
+    });
+    setIsReady(true);
+  };
+
+  const renderContent = () => {
+    switch (gameStatus) {
+      case 'waiting':
+        return (
+          <div className="flex flex-col items-center gap-4">
+            <h2 className="text-xl">Waiting for players...</h2>
+            <button
+              onClick={handleReadyClick}
+              disabled={isReady}
+              className={`px-4 py-2 rounded ${
+                isReady 
+                  ? 'bg-gray-400 cursor-not-allowed' 
+                  : 'bg-black text-white hover:bg-gray-800'
+              }`}
+            >
+              {isReady ? 'Ready!' : 'Ready Up'}
+            </button>
+            <div className="mt-4">
+              <h3 className="font-bold mb-2">Players:</h3>
+              <ul>
+                {players.map(([id, player]) => (
+                  <li key={id} className="flex items-center gap-2">
+                    {player.name || id.slice(0, 8)}
+                    {player.ready && <span className="text-green-500">✓</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        );
+      case 'active_round':
+        return (
+          <div className="text-2xl font-bold">
+            Game in progress...
+          </div>
+        );
+      default:
+        return null;
+    }
   };
 
   return (
     <div className="flex flex-col items-center justify-center p-4">
-      <div className="text-2xl font-bold mb-4">
-        {formatTime(remainingTime)}
-      </div>
-      <div className="w-64 h-2 bg-gray-200 rounded-full overflow-hidden">
-        <div 
-          className="h-full bg-black transition-all duration-1000"
-          style={{ 
-            width: `${Math.max(0, Math.min(100, (remainingTime / 5000) * 100))}%`
-          }}
-        />
-      </div>
+      {renderContent()}
     </div>
   );
 };

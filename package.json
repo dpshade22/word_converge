@@ -10,10 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@permaweb/aoconnect": "^0.0.45",
     "ethers": "^6.13.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "@permaweb/aoconnect": "^0.0.45"
+    "react-error-boundary": "^5.0.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",

@@ -46,14 +46,16 @@ export const WalletProvider = ({ children }) => {
           throw new Error('Failed to connect to game process');
         }
 
-        if (info.name === 'Synonyms Game' && info.version === '1.0.0') {
+        console.log("Game info:", info);
+
+        if (info.status === 'Connected') {
           setWalletAddress(address);
           setIsConnected(true);
           setIsLoading(false);
           return;
         }
         
-        throw new Error('Invalid game version or name');
+        throw new Error('Invalid game connection response');
       } catch (error) {
         attempts++;
         
