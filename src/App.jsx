@@ -148,9 +148,7 @@ function App() {
                   Lobby ID: {selectedLobbyId}
                 </div>
               )}
-              <div className="text-sm font-medium text-gray-500">
-                {walletAddress ? `Connected: ${walletAddress.slice(0, 8)}...` : 'Not Connected'}
-              </div>
+              <WalletConnect />
             </div>
           </div>
         </div>
