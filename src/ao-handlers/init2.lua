@@ -22,9 +22,29 @@ Handlers.add("GetLobbyState",
     { Action = "GetLobbyState" },
     function(msg)
         local lobbyID = msg.Tags.LobbyID
-        print("GetLobbyState request for lobby: " .. lobbyID)
         local lobby = Lobbies[tonumber(lobbyID)]
-        msg.reply({ Data = json.encode({ status = "success", lobby = lobby }) })
+        if lobby then
+            -- Include current round submissions in response
+            local currentRound = nil
+            if #lobby.rounds > 0 then
+                currentRound = {
+                    roundNumber = lobby.rounds[#lobby.rounds].roundNumber,
+                    submissions = lobby.rounds[#lobby.rounds].submissions
+                }
+            end
+            
+            local response = {
+                status = "success",
+                lobby = {
+                    players = lobby.players,
+                    status = lobby.status,
+                    currentRound = currentRound
+                }
+            }
+            msg.reply({ Data = json.encode(response) })
+        else
+            msg.reply({ Data = json.encode({ status = "error", error = "Lobby not found" }) })
+        end
     end
 )
 
@@ -37,7 +57,6 @@ Handlers.add("GetStatus",
         msg.reply({ Data = json.encode({ status = "success", gameStatus = status }) })
     end
 )
-
 Handlers.add("SubmitWord",
     { Action = "SubmitWord" },
     function(msg)
@@ -46,6 +65,12 @@ Handlers.add("SubmitWord",
         local word = msg.Tags.Word
         print("SubmitWord request - Lobby: " .. lobbyID .. ", Player: " .. playerID .. ", Word: " .. word)
         local success = SubmitWord(lobbyID, playerID, word)
+        if success then
+            local lobby = Lobbies[tonumber(lobbyID)]
+            if lobby and lobby.players[playerID] then
+                lobby.players[playerID].ready = false
+            end
+        end
         msg.reply({ Data = json.encode({ status = success and "success" or "error" }) })
     end
 )
@@ -111,8 +136,10 @@ Handlers.add("PlayerReady",
 
         local allReady = true
         local playerCount = 0
-        for _, player in pairs(lobby.players) do
+        local playerIds = {}
+        for id, player in pairs(lobby.players) do
             playerCount = playerCount + 1
+            table.insert(playerIds, id)
             if not player.ready then
                 allReady = false
             end
@@ -121,6 +148,8 @@ Handlers.add("PlayerReady",
         print("All players ready: " .. tostring(allReady) .. ", Player count: " .. playerCount)
         if allReady and playerCount >= lobby.config.minPlayers then
             UpdateStatus(lobbyID, GameStatus.ActiveRound)
+            -- Create a new round with the current players
+            AppendRound(lobbyID, playerIds[1], playerIds[2], os.time() * 1000)
         end
         msg.reply({ Data = json.encode({ status = "success" }) })
     end
@@ -200,38 +229,41 @@ function SubmitWord(lobbyId, playerId, word)
     local lobby = Lobbies[tonumber(lobbyId)]
     if lobby and lobby.status == GameStatus.ActiveRound then
         local currentRound = lobby.rounds[#lobby.rounds]
-        if not currentRound.submissions[playerId] then
+        if currentRound then
             currentRound.submissions[playerId] = word
-            print("Word submitted successfully")
             
-            if #currentRound.submissions == 2 then
-                print("All words submitted, updating status to PostRound")
+            -- Check if all players have submitted
+            local submissionCount = 0
+            for _, _ in pairs(currentRound.submissions) do
+                submissionCount = submissionCount + 1
+            end
+            
+            -- If all players submitted, move to post round
+            if submissionCount >= lobby.config.minPlayers then
                 UpdateStatus(lobbyId, GameStatus.PostRound)
             end
             
             return true
         end
     end
-    print("Failed to submit word")
     return false
 end
 
 function CreateLobby()
     print("Creating new lobby")
-    local lobbyID = #Lobbies + 1
-    Lobbies[lobbyID] = {
-        id = lobbyID,
-        players = {},
-        rounds = {},
+    local lobbyId = #Lobbies + 1
+    Lobbies[lobbyId] = {
         status = GameStatus.Waiting,
+        players = {},
+        rounds = {},  
         config = {
-            maxPlayers = 2,
             minPlayers = 2,
-            roundDuration = 60000
+            maxPlayers = 2,
+            roundDuration = 15000  
         }
     }
-    print("Lobby created with ID: " .. lobbyID)
-    return lobbyID
+    print("Created lobby with ID: " .. lobbyId)
+    return lobbyId
 end
 
 function JoinLobby(lobbyId, playerId)

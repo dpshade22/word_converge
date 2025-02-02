@@ -45,6 +45,7 @@ const handleMessage = async (action, tags = [], logPrefix = '') => {
 };
 
 export const aoService = {
+  handleMessage,
   // Read-only operations using dryrun
   async getInfo() {
     try {
@@ -75,19 +76,94 @@ export const aoService = {
   },
 
   async getLobbyState(lobbyId) {
+    if (!lobbyId) {
+      return { status: 'error', error: 'Lobby ID is required' };
+    }
+
     try {
       const result = await dryrun({
         process: PROCESS_ID,
         tags: [
           { name: "Action", value: "GetLobbyState" },
-          { name: "LobbyID", value: lobbyId.toString() }
+          { name: "LobbyID", value: String(lobbyId) }
         ],
         data: ""
       });
-      return safeJsonParse(result.Messages[0].Data);
+
+      if (!result?.Messages?.[0]?.Data) {
+        return { 
+          status: 'error', 
+          error: 'Invalid response from server',
+          lobby: { players: {} } 
+        };
+      }
+
+      const data = JSON.parse(result.Messages[0].Data);
+      
+      // Ensure lobby and players exist
+      if (!data.lobby) {
+        data.lobby = { players: {} };
+      }
+      if (!data.lobby.players) {
+        data.lobby.players = {};
+      }
+
+      return {
+        status: 'success',
+        lobby: data.lobby
+      };
     } catch (error) {
-      console.error('Error getting lobby state:', error);
-      return { status: 'error', error: error.message };
+      console.error('Error in getLobbyState:', error);
+      return { 
+        status: 'error', 
+        error: error.message,
+        lobby: { players: {} } 
+      };
+    }
+  },
+
+  async playerReady(lobbyId, playerId) {
+    if (!lobbyId || !playerId) {
+      return { status: 'error', error: 'Lobby ID and Player ID are required' };
+    }
+
+    try {
+      // Send ready status
+      const readyResult = await handleMessage("PlayerReady", [
+        { name: "LobbyID", value: String(lobbyId) },
+        { name: "PlayerID", value: String(playerId) }
+      ], 'Player Ready');
+
+      if (!readyResult?.status || readyResult.status === 'error') {
+        throw new Error(readyResult?.error || 'Failed to set ready status');
+      }
+
+      // Get updated lobby state
+      const lobbyState = await this.getLobbyState(lobbyId);
+      if (lobbyState.status === 'error') {
+        throw new Error(lobbyState.error);
+      }
+
+      // Check if player is actually ready in the updated state
+      const players = lobbyState.lobby?.players || {};
+      const playerState = players[playerId];
+      
+      if (!playerState?.ready) {
+        throw new Error('Ready status not confirmed by server');
+      }
+
+      return {
+        status: 'success',
+        lobby: lobbyState.lobby,
+        isReady: true
+      };
+    } catch (error) {
+      console.error('Error in playerReady:', error);
+      return { 
+        status: 'error', 
+        error: error.message,
+        isReady: false 
+      };
     }
   },
 
@@ -115,10 +191,22 @@ export const aoService = {
     ], 'Leave lobby');
   },
 
-  async submitWord(lobbyId, word) {
-    return handleMessage('SubmitWord', [
-      { name: "LobbyID", value: lobbyId.toString() },
-      { name: "Word", value: word }
-    ], 'Submit word');
-  }
+  async submitWord(lobbyId, playerId, word) {
+    try {
+      const result = await handleMessage("SubmitWord", [
+        { name: "LobbyID", value: String(lobbyId) },
+        { name: "PlayerID", value: String(playerId) },
+        { name: "Word", value: word }
+      ], 'Submit Word');
+
+      if (!result?.status || result.status === 'error') {
+        throw new Error(result?.error || 'Failed to submit word');
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Error in submitWord:', error);
+      return { status: 'error', error: error.message };
+    }
+  },
 };
