@@ -29,7 +29,8 @@ Handlers.add("GetLobbyState",
             if #lobby.rounds > 0 then
                 currentRound = {
                     roundNumber = lobby.rounds[#lobby.rounds].roundNumber,
-                    submissions = lobby.rounds[#lobby.rounds].submissions
+                    submissions = lobby.rounds[#lobby.rounds].submissions,
+                    team_score = lobby.rounds[#lobby.rounds].team_score
                 }
             end
             
@@ -111,7 +112,7 @@ Handlers.add("GetLastRoundsSubmissions",
         local lobby = Lobbies[tonumber(lobbyID)]
         if lobby and #lobby.rounds > 0 then
             local lastRound = lobby.rounds[#lobby.rounds]
-            msg.reply({ Data = json.encode({ status = "success", submissions = lastRound.submissions }) })
+            msg.reply({ Data = json.encode({ status = "success", submissions = lastRound.submissions, team_score = lastRound.team_score }) })
         else
             msg.reply({ Data = json.encode({ status = "error", error = "No rounds found" }) })
         end
@@ -201,7 +202,8 @@ function AppendRound(lobbyId, player1Id, player2Id, timestamp)
         submissions = {
             [player1Id] = nil,
             [player2Id] = nil,
-        }
+        },
+        team_score = nil
     })
     print("Round appended successfully")
 end
@@ -236,6 +238,11 @@ function SubmitWord(lobbyId, playerId, word)
             local submissionCount = 0
             for _, _ in pairs(currentRound.submissions) do
                 submissionCount = submissionCount + 1
+            end
+            
+            -- Calculate score when all players have submitted
+            if submissionCount >= 2 then
+                currentRound.team_score = calculate_team_score(currentRound.submissions)
             end
             
             -- If all players submitted, move to post round
@@ -333,4 +340,76 @@ function LeaveLobby(lobbyId, playerId)
         print("Lobby not found")
         return false
     end
+end
+
+-- Calculate shared team score based on word differences
+function calculate_team_score(submissions)
+  local starting_score = 60
+  local words = {}
+  
+  -- Collect all words
+  for player_id, word in pairs(submissions) do
+    print("Player " .. player_id .. " submitted word: " .. word)
+    table.insert(words, word)
+  end
+  
+  -- For two players, just calculate difference between their words
+  if #words == 2 then
+    print("\nCalculating team score:")
+    print("Word 1: " .. words[1])
+    print("Word 2: " .. words[2])
+    
+    local difference = calculate_difference(words[1], words[2])
+    local final_score = math.max(0, starting_score - difference)
+    
+    print("Character differences: " .. difference)
+    print("Starting score: " .. starting_score)
+    print("Points deducted: -" .. difference)
+    print("Final team score: " .. final_score)
+    print("------------------------")
+    
+    return final_score
+  end
+  
+  print("Not enough players submitted words yet")
+  return starting_score
+end
+
+-- Calculate Levenshtein distance between two strings
+function calculate_difference(str1, str2)
+  local len1, len2 = #str1, #str2
+  local matrix = {}
+  
+  for i = 0, len1 do
+    matrix[i] = {}
+    matrix[i][0] = i
+  end
+  
+  for j = 0, len2 do
+    matrix[0][j] = j
+  end
+  
+  for i = 1, len1 do
+    for j = 1, len2 do
+      local cost = string.lower(string.sub(str1, i, i)) == string.lower(string.sub(str2, j, j)) and 0 or 1
+      matrix[i][j] = math.min(
+        matrix[i-1][j] + 1,
+        matrix[i][j-1] + 1,
+        matrix[i-1][j-1] + cost
+      )
+    end
+  end
+  
+  -- Print character by character comparison
+  print("\nCharacter comparison:")
+  local i = 1
+  while i <= math.max(len1, len2) do
+    local char1 = i <= len1 and string.lower(string.sub(str1, i, i)) or "-"
+    local char2 = i <= len2 and string.lower(string.sub(str2, i, i)) or "-"
+    local match = char1 == char2 and "" or ""
+    print(string.format("Position %d: %s vs %s %s", i, char1, char2, match))
+    i = i + 1
+  end
+  
+  return matrix[len1][len2]
 end

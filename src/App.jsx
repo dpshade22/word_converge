@@ -190,31 +190,57 @@ function App() {
           <div className="max-w-lg mx-auto space-y-8">
             <div className="text-center">
               <h2 className="text-3xl font-bold mb-2">Round {currentRound.roundNumber} Results</h2>
-              <p className="text-lg text-gray-600">Let's see what words were chosen!</p>
+              <p className="text-lg text-gray-600">Let's see how well your words converged!</p>
+              <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                <p className="text-sm text-gray-600">Team Score</p>
+                <p className="text-4xl font-bold">{currentRound.team_score || 0}</p>
+                <p className="text-sm text-gray-500 mt-2">Starting from 60 points, you lose points for each character difference between words.</p>
+              </div>
             </div>
 
             <div className="space-y-6">
-              {Object.entries(players).map(([playerId, player]) => (
-                <div 
-                  key={playerId}
-                  className={`p-4 rounded-lg border-2 ${
-                    playerId === walletAddress 
-                      ? 'border-black bg-gray-50'
-                      : 'border-gray-200'
-                  }`}
-                >
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h3 className="font-medium">
-                        {playerId === walletAddress ? 'You' : (player.name || playerId.slice(0, 8))}
-                      </h3>
-                      <p className="text-xl font-bold mt-1">
-                        {currentRound.submissions[playerId]}
-                      </p>
+              {Object.entries(players).map(([playerId, player]) => {
+                const submissions = currentRound.submissions;
+                const otherSubmissions = Object.entries(submissions)
+                  .filter(([id]) => id !== playerId)
+                  .map(([id, word]) => ({
+                    id,
+                    word
+                  }));
+
+                return (
+                  <div 
+                    key={playerId}
+                    className={`p-4 rounded-lg border-2 ${
+                      playerId === walletAddress 
+                        ? 'border-black bg-gray-50'
+                        : 'border-gray-200'
+                    }`}
+                  >
+                    <div className="space-y-3">
+                      <div>
+                        <h3 className="font-medium">
+                          {playerId === walletAddress ? 'You' : (player.name || playerId.slice(0, 8))}
+                        </h3>
+                        <p className="text-xl font-bold mt-1">
+                          {submissions[playerId]}
+                        </p>
+                      </div>
+                      
+                      <div className="border-t pt-2">
+                        <p className="text-sm text-gray-600 mb-2">Teammate's word:</p>
+                        <div className="space-y-1">
+                          {otherSubmissions.map(({ id, word }) => (
+                            <div key={id} className="text-lg font-medium">
+                              {word}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <ReadyCheck
